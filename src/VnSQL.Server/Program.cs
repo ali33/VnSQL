@@ -4,8 +4,10 @@ using Microsoft.Extensions.Logging;
 using VnSQL.Core.Interfaces;
 using VnSQL.Storage.Engines;
 using VnSQL.Protocols.Handlers;
+using VnSQL.Protocols.Configuration;
 using VnSQL.Cluster;
 using VnSQL.Server.Services;
+using VnSQL.Core.Sql;
 
 namespace VnSQL.Server;
 
@@ -46,6 +48,14 @@ public class Program
                 });
                 
                 services.AddSingleton<IStorageEngine, MemoryStorageEngine>();
+                
+                // Register MySQL configuration
+                services.Configure<MySQLConfiguration>(
+                    configuration.GetSection("VnSQL:Protocols:MySQL"));
+                
+                // Register SQL components
+                services.AddSingleton<IProtocolResponseFormatter, ProtocolResponseFormatter>();
+                services.AddSingleton<QueryExecutor>();
                 
                 // Register protocol handlers
                 services.AddSingleton<IProtocolHandler, MySQLProtocolHandler>();
