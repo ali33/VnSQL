@@ -3,7 +3,9 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using VnSQL.Core.Interfaces;
+using VnSQL.Protocols.Handlers;
 
 namespace VnSQL.Server.Services;
 
@@ -15,7 +17,7 @@ public class VnSQLServerService : BackgroundService
     private readonly ILogger<VnSQLServerService> _logger;
     private readonly IConfiguration _configuration;
     private readonly IStorageEngine _storageEngine;
-    private readonly IProtocolHandler _protocolHandler;
+    private readonly IServiceProvider _serviceProvider;
     private readonly IClusterManager _clusterManager;
     private readonly List<TcpListener> _listeners = new();
     private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -24,13 +26,13 @@ public class VnSQLServerService : BackgroundService
         ILogger<VnSQLServerService> logger,
         IConfiguration configuration,
         IStorageEngine storageEngine,
-        IProtocolHandler protocolHandler,
+        IServiceProvider serviceProvider,
         IClusterManager clusterManager)
     {
         _logger = logger;
         _configuration = configuration;
         _storageEngine = storageEngine;
-        _protocolHandler = protocolHandler;
+        _serviceProvider = serviceProvider;
         _clusterManager = clusterManager;
     }
     
@@ -63,9 +65,7 @@ public class VnSQLServerService : BackgroundService
             // Start protocol listeners
             await StartProtocolListenersAsync();
             
-            _logger.LogInformation("VnSQL Server started successfully");
-            _logger.LogInformation("Supported protocols: {ProtocolName} on port {Port}", 
-                _protocolHandler.ProtocolName, _protocolHandler.DefaultPort);
+            _logger.LogInformation("VnSQL Server started successfully with multiple protocols");
             
             // Keep the service running
             while (!stoppingToken.IsCancellationRequested)
@@ -119,35 +119,75 @@ public class VnSQLServerService : BackgroundService
     {
         try
         {
-            // Get protocol configuration
-            var mysqlEnabled = _configuration.GetValue<bool>("VnSQL:Protocols:MySQL:Enabled");
-            var mysqlPort = _configuration.GetValue<int>("VnSQL:Protocols:MySQL:Port", 3306);
-            
-            var postgresEnabled = _configuration.GetValue<bool>("VnSQL:Protocols:PostgreSQL:Enabled");
-            var postgresPort = _configuration.GetValue<int>("VnSQL:Protocols:PostgreSQL:Port", 5432);
-            
-            var sqliteEnabled = _configuration.GetValue<bool>("VnSQL:Protocols:SQLite:Enabled");
-            var sqlitePort = _configuration.GetValue<int>("VnSQL:Protocols:SQLite:Port", 5433);
-            
             var host = _configuration.GetValue<string>("VnSQL:Server:Host", "0.0.0.0");
             var maxConnections = _configuration.GetValue<int>("VnSQL:Server:MaxConnections", 1000);
             
-            // Start MySQL listener
+            // Get all protocol handlers from DI container
+            var protocolHandlers = _serviceProvider.GetServices<IProtocolHandler>().ToList();
+            _logger.LogInformation("Found {Count} protocol handlers", protocolHandlers.Count);
+            
+            // Start MySQL Protocol
+            var mysqlEnabled = _configuration.GetValue<bool>("VnSQL:Protocols:MySQL:Enabled");
             if (mysqlEnabled)
             {
-                await StartListenerAsync(host, mysqlPort, "MySQL", maxConnections);
+                var mysqlHandler = protocolHandlers.FirstOrDefault(h => h.ProtocolName == "MySQL");
+                if (mysqlHandler != null)
+                {
+                    var mysqlPort = _configuration.GetValue<int>("VnSQL:Protocols:MySQL:Port", 3306);
+                    await StartListenerAsync(host, mysqlPort, "MySQL", maxConnections, mysqlHandler);
+                }
+                else
+                {
+                    _logger.LogWarning("MySQL protocol enabled but handler not found");
+                }
             }
             
-            // Start PostgreSQL listener (placeholder)
+            // Start PostgreSQL Protocol
+            var postgresEnabled = _configuration.GetValue<bool>("VnSQL:Protocols:PostgreSQL:Enabled");
             if (postgresEnabled)
             {
-                _logger.LogInformation("PostgreSQL protocol not yet implemented");
+                var postgresHandler = protocolHandlers.FirstOrDefault(h => h.ProtocolName == "PostgreSQL");
+                if (postgresHandler != null)
+                {
+                    var postgresPort = _configuration.GetValue<int>("VnSQL:Protocols:PostgreSQL:Port", 5432);
+                    await StartListenerAsync(host, postgresPort, "PostgreSQL", maxConnections, postgresHandler);
+                }
+                else
+                {
+                    _logger.LogWarning("PostgreSQL protocol enabled but handler not found");
+                }
             }
             
-            // Start SQLite listener (placeholder)
+            // Start SQLite Protocol
+            var sqliteEnabled = _configuration.GetValue<bool>("VnSQL:Protocols:SQLite:Enabled");
             if (sqliteEnabled)
             {
-                _logger.LogInformation("SQLite protocol not yet implemented");
+                var sqliteHandler = protocolHandlers.FirstOrDefault(h => h.ProtocolName == "SQLite");
+                if (sqliteHandler != null)
+                {
+                    var sqlitePort = _configuration.GetValue<int>("VnSQL:Protocols:SQLite:Port", 5433);
+                    await StartListenerAsync(host, sqlitePort, "SQLite", maxConnections, sqliteHandler);
+                }
+                else
+                {
+                    _logger.LogWarning("SQLite protocol enabled but handler not found");
+                }
+            }
+            
+            // Start SQL Server Protocol
+            var sqlserverEnabled = _configuration.GetValue<bool>("VnSQL:Protocols:SQLServer:Enabled");
+            if (sqlserverEnabled)
+            {
+                var sqlserverHandler = protocolHandlers.FirstOrDefault(h => h.ProtocolName == "SQLServer");
+                if (sqlserverHandler != null)
+                {
+                    var sqlserverPort = _configuration.GetValue<int>("VnSQL:Protocols:SQLServer:Port", 1433);
+                    await StartListenerAsync(host, sqlserverPort, "SQLServer", maxConnections, sqlserverHandler);
+                }
+                else
+                {
+                    _logger.LogWarning("SQL Server protocol enabled but handler not found");
+                }
             }
         }
         catch (Exception ex)
@@ -157,7 +197,7 @@ public class VnSQLServerService : BackgroundService
         }
     }
     
-    private async Task StartListenerAsync(string host, int port, string protocolName, int maxConnections)
+    private async Task StartListenerAsync(string host, int port, string protocolName, int maxConnections, IProtocolHandler handler)
     {
         try
         {
@@ -183,7 +223,7 @@ public class VnSQLServerService : BackgroundService
                         {
                             try
                             {
-                                await _protocolHandler.HandleConnectionAsync(client);
+                                await handler.HandleConnectionAsync(client);
                             }
                             catch (Exception ex)
                             {
