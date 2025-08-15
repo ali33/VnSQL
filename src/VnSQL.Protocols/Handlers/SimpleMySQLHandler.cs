@@ -18,8 +18,9 @@ public class SimpleMySQLHandler : IProtocolHandler
     private NetworkStream? _stream;
     
     public string ProtocolName => "MySQL";
-    public int DefaultPort => _configuration.Port;
-    
+    public int Port => _configuration.Port;
+    public bool Enabled => _configuration.Enabled;
+    public string Host => _configuration.Host;
     public SimpleMySQLHandler(ILogger<SimpleMySQLHandler> logger, IOptions<MySQLConfiguration> configuration)
     {
         _logger = logger;

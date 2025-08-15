@@ -11,7 +11,8 @@ public class SQLServerConfiguration
     public string InstanceName { get; set; } = "SQLEXPRESS";
     public AuthenticationConfig Authentication { get; set; } = new();
     public SslConfig Ssl { get; set; } = new();
-    
+    public bool Enabled { get; set; }
+
     public class AuthenticationConfig
     {
         public string Username { get; set; } = "sa";
@@ -19,7 +20,7 @@ public class SQLServerConfiguration
         public string Database { get; set; } = "master";
         public bool WindowsAuthentication { get; set; } = false;
     }
-    
+
     public class SslConfig
     {
         public bool Enabled { get; set; } = false;

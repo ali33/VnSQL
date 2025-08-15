@@ -19,27 +19,28 @@ public class SQLiteProtocolHandler : IProtocolHandler
     private readonly QueryExecutor _queryExecutor;
     private TcpClient? _client;
     private NetworkStream? _stream;
-    
+
     public string ProtocolName => "SQLite";
-    public int DefaultPort => _configuration.Port;
-    
+    public int Port => _configuration.Port;
+    public bool Enabled => _configuration.Enabled;
+    public string Host => _configuration.Host;
     public SQLiteProtocolHandler(ILogger<SQLiteProtocolHandler> logger, IOptions<SQLiteConfiguration> configuration, QueryExecutor queryExecutor)
     {
         _logger = logger;
         _configuration = configuration.Value;
         _queryExecutor = queryExecutor;
     }
-    
+
     public async Task HandleConnectionAsync(TcpClient client)
     {
         try
         {
             _client = client;
             _stream = client.GetStream();
-            
+
             // Send SQLite welcome message
             await SendWelcomeMessageAsync();
-            
+
             // Handle authentication (simplified for SQLite)
             var authResult = await HandleAuthenticationAsync();
             if (!authResult)
@@ -47,9 +48,9 @@ public class SQLiteProtocolHandler : IProtocolHandler
                 await SendErrorResponseAsync("Authentication failed");
                 return;
             }
-            
+
             await SendAuthenticationOkAsync();
-            
+
             // Main connection loop
             await HandleQueriesAsync();
         }
@@ -62,17 +63,17 @@ public class SQLiteProtocolHandler : IProtocolHandler
             await CloseConnectionAsync();
         }
     }
-    
+
     public async Task<bool> AuthenticateAsync(string username, string password)
     {
         try
         {
             _logger.LogInformation("SQLite authentication attempt: username={Username}", username);
-            
+
             // SQLite doesn't have built-in authentication, but we can implement a simple one
             var expectedUsername = _configuration.Authentication.Username;
             var expectedPassword = _configuration.Authentication.Password;
-            
+
             if (username == expectedUsername && password == expectedPassword)
             {
                 _logger.LogInformation("SQLite authentication successful!");
@@ -90,13 +91,13 @@ public class SQLiteProtocolHandler : IProtocolHandler
             return false;
         }
     }
-    
+
     public async Task<QueryResult> ExecuteQueryAsync(string query, string database)
     {
         try
         {
             _logger.LogInformation("Executing SQLite query: {Query}", query);
-            
+
             // Use QueryExecutor to handle SQL commands
             return await _queryExecutor.ExecuteAsync(query, "SQLite");
         }
@@ -110,7 +111,7 @@ public class SQLiteProtocolHandler : IProtocolHandler
             };
         }
     }
-    
+
     public async Task SendResponseAsync(QueryResult result)
     {
         try
@@ -129,7 +130,7 @@ public class SQLiteProtocolHandler : IProtocolHandler
             _logger.LogError(ex, "Error sending SQLite response");
         }
     }
-    
+
     public async Task CloseConnectionAsync()
     {
         try
@@ -140,14 +141,14 @@ public class SQLiteProtocolHandler : IProtocolHandler
                 _stream.Dispose();
                 _stream = null;
             }
-            
+
             if (_client != null)
             {
                 _client.Close();
                 _client.Dispose();
                 _client = null;
             }
-            
+
             _logger.LogInformation("SQLite connection closed");
         }
         catch (ObjectDisposedException)
@@ -159,20 +160,20 @@ public class SQLiteProtocolHandler : IProtocolHandler
             _logger.LogError(ex, "Error closing SQLite connection");
         }
     }
-    
+
     private async Task SendWelcomeMessageAsync()
     {
         var welcomeMessage = "VnSQL SQLite Server v1.0.0\r\n" +
                            "Connected to SQLite database\r\n" +
                            "Type 'help' for commands\r\n\r\n";
-        
+
         var messageBytes = Encoding.UTF8.GetBytes(welcomeMessage);
         await _stream!.WriteAsync(messageBytes);
         await _stream.FlushAsync();
-        
+
         _logger.LogInformation("Sent SQLite welcome message");
     }
-    
+
     private async Task<bool> HandleAuthenticationAsync()
     {
         try
@@ -182,27 +183,27 @@ public class SQLiteProtocolHandler : IProtocolHandler
             var promptBytes = Encoding.UTF8.GetBytes(authPrompt);
             await _stream!.WriteAsync(promptBytes);
             await _stream.FlushAsync();
-            
+
             // Read username
             var username = await ReadLineAsync();
             if (string.IsNullOrEmpty(username))
             {
                 return false;
             }
-            
+
             // Send password prompt
             var passwordPrompt = "Password: ";
             var passwordPromptBytes = Encoding.UTF8.GetBytes(passwordPrompt);
             await _stream.WriteAsync(passwordPromptBytes);
             await _stream.FlushAsync();
-            
+
             // Read password
             var password = await ReadLineAsync();
             if (string.IsNullOrEmpty(password))
             {
                 return false;
             }
-            
+
             return await AuthenticateAsync(username, password);
         }
         catch (Exception ex)
@@ -211,52 +212,52 @@ public class SQLiteProtocolHandler : IProtocolHandler
             return false;
         }
     }
-    
+
     private async Task SendAuthenticationOkAsync()
     {
         var authOkMessage = "Authentication successful!\r\n";
         var messageBytes = Encoding.UTF8.GetBytes(authOkMessage);
         await _stream!.WriteAsync(messageBytes);
         await _stream.FlushAsync();
-        
+
         _logger.LogInformation("Sent SQLite authentication OK");
     }
-    
+
     private async Task HandleQueriesAsync()
     {
         try
         {
             _logger.LogInformation("Starting SQLite query handling loop");
-            
+
             var prompt = "sqlite> ";
             var promptBytes = Encoding.UTF8.GetBytes(prompt);
-            
+
             while (_client?.Connected == true && _stream != null)
             {
                 // Send prompt
                 await _stream.WriteAsync(promptBytes);
                 await _stream.FlushAsync();
-                
+
                 // Read query
                 var query = await ReadLineAsync();
                 if (string.IsNullOrEmpty(query))
                 {
                     continue;
                 }
-                
+
                 // Handle special commands
                 if (query.ToLower() == "quit" || query.ToLower() == "exit")
                 {
                     _logger.LogInformation("Client requested quit");
                     break;
                 }
-                
+
                 if (query.ToLower() == "help")
                 {
                     await SendHelpMessageAsync();
                     continue;
                 }
-                
+
                 // Execute query
                 _logger.LogInformation("Executing SQLite query: {Query}", query);
                 var result = await ExecuteQueryAsync(query, "sqlite");
@@ -271,10 +272,10 @@ public class SQLiteProtocolHandler : IProtocolHandler
         {
             _logger.LogError(ex, "Error in SQLite query handling loop");
         }
-        
+
         _logger.LogInformation("SQLite query handling loop ended");
     }
-    
+
     private async Task SendQueryResponseAsync(QueryResult result)
     {
         if (result.Data == null || result.ColumnNames == null)
@@ -282,15 +283,15 @@ public class SQLiteProtocolHandler : IProtocolHandler
             await SendMessageAsync("Query executed successfully.\r\n");
             return;
         }
-        
+
         // Print column headers
         var header = string.Join(" | ", result.ColumnNames);
         await SendMessageAsync(header + "\r\n");
-        
+
         // Print separator
         var separator = string.Join(" | ", result.ColumnNames.Select(c => new string('-', c.Length)));
         await SendMessageAsync(separator + "\r\n");
-        
+
         // Print data rows
         foreach (var row in result.Data)
         {
@@ -298,16 +299,16 @@ public class SQLiteProtocolHandler : IProtocolHandler
             var rowString = string.Join(" | ", rowData);
             await SendMessageAsync(rowString + "\r\n");
         }
-        
+
         await SendMessageAsync($"\r\n{result.Data.Count} row(s) returned.\r\n");
     }
-    
+
     private async Task SendErrorResponseAsync(string errorMessage)
     {
         var errorResponse = $"Error: {errorMessage}\r\n";
         await SendMessageAsync(errorResponse);
     }
-    
+
     private async Task SendHelpMessageAsync()
     {
         var helpMessage = @"
@@ -334,11 +335,11 @@ Examples:
 ";
         await SendMessageAsync(helpMessage);
     }
-    
+
     private async Task SendMessageAsync(string message)
     {
         if (_stream == null) return;
-        
+
         try
         {
             var messageBytes = Encoding.UTF8.GetBytes(message);
@@ -354,16 +355,16 @@ Examples:
             _logger.LogError(ex, "Error sending SQLite message");
         }
     }
-    
+
     private async Task<string> ReadLineAsync()
     {
         if (_stream == null) return string.Empty;
-        
+
         try
         {
             var buffer = new byte[1024];
             var line = new StringBuilder();
-            
+
             while (true)
             {
                 var bytesRead = await _stream.ReadAsync(buffer, 0, 1);
@@ -371,7 +372,7 @@ Examples:
                 {
                     break; // Client disconnected
                 }
-                
+
                 var character = (char)buffer[0];
                 if (character == '\n')
                 {
@@ -386,7 +387,7 @@ Examples:
                     line.Append(character);
                 }
             }
-            
+
             return line.ToString().Trim();
         }
         catch (Exception ex)

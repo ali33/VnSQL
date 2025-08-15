@@ -10,7 +10,8 @@ public class SQLiteConfiguration
     public int MaxConnections { get; set; } = 50;
     public string DatabasePath { get; set; } = "./data/sqlite.db";
     public AuthenticationConfig Authentication { get; set; } = new();
-    
+    public bool Enabled { get; set; }
+
     public class AuthenticationConfig
     {
         public string Username { get; set; } = "sqlite";

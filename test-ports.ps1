@@ -1,7 +1,7 @@
 # Test individual ports
 Write-Host "Testing individual ports..." -ForegroundColor Green
 
-$ports = @(3306, 5432, 5433, 1433)
+$ports = @(3306, 5432, 5433, 1333)
 
 foreach ($port in $ports) {
     try {

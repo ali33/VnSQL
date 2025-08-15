@@ -20,8 +20,9 @@ public class PostgreSQLProtocolHandler : IProtocolHandler
     private NetworkStream? _stream;
     
     public string ProtocolName => "PostgreSQL";
-    public int DefaultPort => _configuration.Port;
-    
+    public int Port => _configuration.Port;
+    public bool Enabled => _configuration.Enabled;
+    public string Host => _configuration.Host;
     public PostgreSQLProtocolHandler(ILogger<PostgreSQLProtocolHandler> logger, IOptions<PostgreSQLConfiguration> configuration, QueryExecutor queryExecutor)
     {
         _logger = logger;

@@ -15,6 +15,8 @@ public class MySQLConfiguration
     /// </summary>
     public int Port { get; set; } = 3306;
     
+    public string Host {  get; set; }
+
     /// <summary>
     /// Authentication settings
     /// </summary>

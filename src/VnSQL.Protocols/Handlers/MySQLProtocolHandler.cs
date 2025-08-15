@@ -20,8 +20,13 @@ public class MySQLProtocolHandler : IProtocolHandler
     private NetworkStream? _stream;
     
     public string ProtocolName => "MySQL";
-    public int DefaultPort => _configuration.Port;
-    
+    public int Port => _configuration.Port;
+    public bool Enabled => _configuration.Enabled;
+
+    public string Host => _configuration.Host;
+
+    public int MaxConnections => throw new NotImplementedException();
+
     public MySQLProtocolHandler(ILogger<MySQLProtocolHandler> logger, IOptions<MySQLConfiguration> configuration, QueryExecutor queryExecutor)
     {
         _logger = logger;

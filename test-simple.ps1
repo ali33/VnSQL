@@ -66,4 +66,4 @@ Write-Host "Connection info:" -ForegroundColor Yellow
 Write-Host "MySQL: localhost:3306 (root/password)" -ForegroundColor White
 Write-Host "PostgreSQL: localhost:5432 (postgres/password)" -ForegroundColor White
 Write-Host "SQLite: localhost:5433 (sqlite/password)" -ForegroundColor White
-Write-Host "SQL Server: localhost:1433 (sa/password)" -ForegroundColor White
+Write-Host "SQL Server: localhost:1333 (sa/password)" -ForegroundColor White

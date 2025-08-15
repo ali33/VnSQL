@@ -11,32 +11,36 @@ public interface IProtocolHandler
     /// Tên của protocol
     /// </summary>
     string ProtocolName { get; }
-    
+
     /// <summary>
     /// Port mặc định của protocol
     /// </summary>
-    int DefaultPort { get; }
-    
+    int Port { get; }
+
+    bool Enabled { get; }
+
+    string Host { get; } 
+
     /// <summary>
     /// Xử lý kết nối mới
     /// </summary>
     Task HandleConnectionAsync(TcpClient client);
-    
+
     /// <summary>
     /// Xử lý authentication
     /// </summary>
     Task<bool> AuthenticateAsync(string username, string password);
-    
+
     /// <summary>
     /// Xử lý query
     /// </summary>
     Task<QueryResult> ExecuteQueryAsync(string query, string database);
-    
+
     /// <summary>
     /// Gửi response
     /// </summary>
     Task SendResponseAsync(QueryResult result);
-    
+
     /// <summary>
     /// Đóng kết nối
     /// </summary>

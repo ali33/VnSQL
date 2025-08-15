@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 namespace VnSQL.Protocols.Configuration;
 
 /// <summary>
@@ -10,7 +12,7 @@ public class PostgreSQLConfiguration
     public int MaxConnections { get; set; } = 100;
     public AuthenticationConfig Authentication { get; set; } = new();
     public SslConfig Ssl { get; set; } = new();
-    
+    public bool Enabled { get;set; } = true;
     public class AuthenticationConfig
     {
         public string Username { get; set; } = "postgres";
