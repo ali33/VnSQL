@@ -53,12 +53,27 @@ public class Program
                 services.Configure<MySQLConfiguration>(
                     configuration.GetSection("VnSQL:Protocols:MySQL"));
                 
+                // Register PostgreSQL configuration
+                services.Configure<PostgreSQLConfiguration>(
+                    configuration.GetSection("VnSQL:Protocols:PostgreSQL"));
+                
+                // Register SQLite configuration
+                services.Configure<SQLiteConfiguration>(
+                    configuration.GetSection("VnSQL:Protocols:SQLite"));
+                
+                // Register SQL Server configuration
+                services.Configure<SQLServerConfiguration>(
+                    configuration.GetSection("VnSQL:Protocols:SQLServer"));
+                
                 // Register SQL components
                 services.AddSingleton<IProtocolResponseFormatter, ProtocolResponseFormatter>();
                 services.AddSingleton<QueryExecutor>();
                 
                 // Register protocol handlers
                 services.AddSingleton<IProtocolHandler, MySQLProtocolHandler>();
+                services.AddSingleton<IProtocolHandler, PostgreSQLProtocolHandler>();
+                services.AddSingleton<IProtocolHandler, SQLiteProtocolHandler>();
+                services.AddSingleton<IProtocolHandler, SQLServerProtocolHandler>();
                 
                 // Register cluster manager
                 services.AddSingleton<IClusterManager>(provider =>

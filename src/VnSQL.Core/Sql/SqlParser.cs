@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace VnSQL.Core.Sql;
 
 /// <summary>
-/// Simple SQL Parser for VnSQL
+/// Enhanced SQL Parser for VnSQL supporting multiple dialects
 /// </summary>
 public class SqlParser
 {
@@ -25,6 +25,21 @@ public class SqlParser
     private static readonly Regex PgListDatabasesRegex = new(@"^SELECT\s+datname\s+FROM\s+pg_database\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PgListTablesRegex = new(@"^SELECT\s+tablename\s+FROM\s+pg_tables\s+WHERE\s+schemaname\s*=\s*'public'\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex PgDescribeTableRegex = new(@"^SELECT\s+column_name,\s*data_type,\s*is_nullable,\s*column_default\s+FROM\s+information_schema\.columns\s+WHERE\s+table_name\s*=\s*[`""]?(\w+)[`""]?\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    
+    // SQLite-style patterns
+    private static readonly Regex SqliteListTablesRegex = new(@"^SELECT\s+name\s+FROM\s+sqlite_master\s+WHERE\s+type\s*=\s*'table'\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SqliteDescribeTableRegex = new(@"^PRAGMA\s+table_info\s*\(\s*[`""]?(\w+)[`""]?\s*\)\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    
+    // MariaDB-specific patterns
+    private static readonly Regex MariaDbShowEnginesRegex = new(@"^SHOW\s+ENGINES\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex MariaDbShowVariablesRegex = new(@"^SHOW\s+VARIABLES\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    
+    // Advanced SQL patterns
+    private static readonly Regex AlterTableRegex = new(@"^ALTER\s+TABLE\s+[`""]?(\w+)[`""]?\s+(.+?)\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex CreateIndexRegex = new(@"^CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?[`""]?(\w+)[`""]?\s+ON\s+[`""]?(\w+)[`""]?\s*\((.+?)\)\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex DropIndexRegex = new(@"^DROP\s+INDEX\s+(?:IF\s+EXISTS\s+)?[`""]?(\w+)[`""]?\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GrantRegex = new(@"^GRANT\s+(.+?)\s+ON\s+[`""]?(\w+)[`""]?\s+TO\s+[`""]?(\w+)[`""]?\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex RevokeRegex = new(@"^REVOKE\s+(.+?)\s+ON\s+[`""]?(\w+)[`""]?\s+FROM\s+[`""]?(\w+)[`""]?\s*;?\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static SqlCommand Parse(string sql)
     {
@@ -40,12 +55,31 @@ public class SqlParser
             };
         }
         
-        // SHOW TABLES (MySQL) or SELECT tablename FROM pg_tables (PostgreSQL)
-        if (ShowTablesRegex.IsMatch(trimmedSql) || PgListTablesRegex.IsMatch(trimmedSql))
+        // SHOW TABLES (MySQL) or SELECT tablename FROM pg_tables (PostgreSQL) or SQLite tables
+        if (ShowTablesRegex.IsMatch(trimmedSql) || PgListTablesRegex.IsMatch(trimmedSql) || SqliteListTablesRegex.IsMatch(trimmedSql))
         {
             return new SqlCommand
             {
                 Type = SqlCommandType.ShowTables,
+                RawSql = trimmedSql
+            };
+        }
+        
+        // MariaDB specific commands
+        if (MariaDbShowEnginesRegex.IsMatch(trimmedSql))
+        {
+            return new SqlCommand
+            {
+                Type = SqlCommandType.ShowEngines,
+                RawSql = trimmedSql
+            };
+        }
+        
+        if (MariaDbShowVariablesRegex.IsMatch(trimmedSql))
+        {
+            return new SqlCommand
+            {
+                Type = SqlCommandType.ShowVariables,
                 RawSql = trimmedSql
             };
         }
@@ -111,6 +145,73 @@ public class SqlParser
             };
         }
         
+        // ALTER TABLE
+        var alterTableMatch = AlterTableRegex.Match(trimmedSql);
+        if (alterTableMatch.Success)
+        {
+            return new SqlCommand
+            {
+                Type = SqlCommandType.AlterTable,
+                TableName = alterTableMatch.Groups[1].Value,
+                AlterClause = alterTableMatch.Groups[2].Value,
+                RawSql = trimmedSql
+            };
+        }
+        
+        // CREATE INDEX
+        var createIndexMatch = CreateIndexRegex.Match(trimmedSql);
+        if (createIndexMatch.Success)
+        {
+            return new SqlCommand
+            {
+                Type = SqlCommandType.CreateIndex,
+                IndexName = createIndexMatch.Groups[1].Value,
+                TableName = createIndexMatch.Groups[2].Value,
+                ColumnNames = ParseColumnList(createIndexMatch.Groups[3].Value),
+                RawSql = trimmedSql
+            };
+        }
+        
+        // DROP INDEX
+        var dropIndexMatch = DropIndexRegex.Match(trimmedSql);
+        if (dropIndexMatch.Success)
+        {
+            return new SqlCommand
+            {
+                Type = SqlCommandType.DropIndex,
+                IndexName = dropIndexMatch.Groups[1].Value,
+                RawSql = trimmedSql
+            };
+        }
+        
+        // GRANT
+        var grantMatch = GrantRegex.Match(trimmedSql);
+        if (grantMatch.Success)
+        {
+            return new SqlCommand
+            {
+                Type = SqlCommandType.Grant,
+                Privileges = grantMatch.Groups[1].Value,
+                TableName = grantMatch.Groups[2].Value,
+                UserName = grantMatch.Groups[3].Value,
+                RawSql = trimmedSql
+            };
+        }
+        
+        // REVOKE
+        var revokeMatch = RevokeRegex.Match(trimmedSql);
+        if (revokeMatch.Success)
+        {
+            return new SqlCommand
+            {
+                Type = SqlCommandType.Revoke,
+                Privileges = revokeMatch.Groups[1].Value,
+                TableName = revokeMatch.Groups[2].Value,
+                UserName = revokeMatch.Groups[3].Value,
+                RawSql = trimmedSql
+            };
+        }
+        
         // SELECT
         var selectMatch = SelectRegex.Match(trimmedSql);
         if (selectMatch.Success)
@@ -166,9 +267,11 @@ public class SqlParser
             };
         }
         
-        // DESCRIBE TABLE (MySQL) or SELECT column info (PostgreSQL)
+        // DESCRIBE TABLE (MySQL) or SELECT column info (PostgreSQL) or PRAGMA (SQLite)
         var describeMatch = DescribeTableRegex.Match(trimmedSql);
         var pgDescribeMatch = PgDescribeTableRegex.Match(trimmedSql);
+        var sqliteDescribeMatch = SqliteDescribeTableRegex.Match(trimmedSql);
+        
         if (describeMatch.Success)
         {
             return new SqlCommand
@@ -184,6 +287,15 @@ public class SqlParser
             {
                 Type = SqlCommandType.DescribeTable,
                 TableName = pgDescribeMatch.Groups[1].Value,
+                RawSql = trimmedSql
+            };
+        }
+        else if (sqliteDescribeMatch.Success)
+        {
+            return new SqlCommand
+            {
+                Type = SqlCommandType.DescribeTable,
+                TableName = sqliteDescribeMatch.Groups[1].Value,
                 RawSql = trimmedSql
             };
         }
@@ -207,7 +319,7 @@ public class SqlParser
             var spaceIndex = trimmed.IndexOf(' ');
             if (spaceIndex > 0)
             {
-                var name = trimmed.Substring(0, spaceIndex).Trim('`');
+                var name = trimmed.Substring(0, spaceIndex).Trim('`', '"');
                 var typeAndConstraints = trimmed.Substring(spaceIndex + 1).Trim();
                 
                 columns.Add(new ColumnDefinition
@@ -215,7 +327,9 @@ public class SqlParser
                     Name = name,
                     Type = ParseColumnType(typeAndConstraints),
                     IsPrimaryKey = typeAndConstraints.ToUpper().Contains("PRIMARY KEY"),
-                    IsNotNull = typeAndConstraints.ToUpper().Contains("NOT NULL")
+                    IsNotNull = typeAndConstraints.ToUpper().Contains("NOT NULL"),
+                    IsAutoIncrement = typeAndConstraints.ToUpper().Contains("AUTO_INCREMENT") || 
+                                    typeAndConstraints.ToUpper().Contains("AUTOINCREMENT")
                 });
             }
         }
@@ -226,7 +340,7 @@ public class SqlParser
     private static List<string> ParseColumnList(string columns)
     {
         return columns.Split(',')
-            .Select(c => c.Trim().Trim('`'))
+            .Select(c => c.Trim().Trim('`', '"'))
             .Where(c => !string.IsNullOrEmpty(c))
             .ToList();
     }
@@ -251,6 +365,10 @@ public class SqlCommand
     public SqlCommandType Type { get; set; }
     public string? DatabaseName { get; set; }
     public string? TableName { get; set; }
+    public string? IndexName { get; set; }
+    public string? UserName { get; set; }
+    public string? Privileges { get; set; }
+    public string? AlterClause { get; set; }
     public List<ColumnDefinition>? Columns { get; set; }
     public List<string>? ColumnNames { get; set; }
     public List<string>? Values { get; set; }
@@ -265,6 +383,7 @@ public class ColumnDefinition
     public string Type { get; set; } = string.Empty;
     public bool IsPrimaryKey { get; set; }
     public bool IsNotNull { get; set; }
+    public bool IsAutoIncrement { get; set; }
 }
 
 public enum SqlCommandType
@@ -272,11 +391,18 @@ public enum SqlCommandType
     Unknown,
     ShowDatabases,
     ShowTables,
+    ShowEngines,
+    ShowVariables,
     UseDatabase,
     CreateDatabase,
     DropDatabase,
     CreateTable,
     DropTable,
+    AlterTable,
+    CreateIndex,
+    DropIndex,
+    Grant,
+    Revoke,
     Select,
     Insert,
     Update,
