@@ -238,10 +238,46 @@ public class QueryExecutor
         }
 
         var data = new List<Dictionary<string, object?>>();
-        var columnNames = command.ColumnNames ?? table.Columns.Select(c => c.Name).ToList();
+        
+        // Handle SELECT * (all columns)
+        List<string> columnNames;
+        if (command.ColumnNames == null || command.ColumnNames.Count == 0 || 
+            (command.ColumnNames.Count == 1 && command.ColumnNames[0] == "*"))
+        {
+            // Select all columns
+            columnNames = table.Columns.Select(c => c.Name).ToList();
+        }
+        else
+        {
+            // Select specific columns
+            columnNames = command.ColumnNames;
+        }
+        
         var columnTypes = table.Columns.Select(c => c.DataType).ToList();
 
-        foreach (var row in table.Rows)
+        // Apply WHERE clause if present
+        var filteredRows = table.Rows;
+        if (!string.IsNullOrEmpty(command.WhereClause))
+        {
+            var whereMatch = System.Text.RegularExpressions.Regex.Match(
+                command.WhereClause, 
+                @"(\w+)\s*=\s*['""]?([^'""\s]+)['""]?", 
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            
+            if (whereMatch.Success)
+            {
+                var whereColumn = whereMatch.Groups[1].Value;
+                var whereValue = whereMatch.Groups[2].Value;
+                
+                filteredRows = table.Rows.Where(row => 
+                {
+                    var currentValue = row.GetValue(whereColumn)?.ToString();
+                    return currentValue == whereValue;
+                }).ToList();
+            }
+        }
+
+        foreach (var row in filteredRows)
         {
             var rowData = new Dictionary<string, object?>();
             foreach (var columnName in columnNames)
@@ -313,24 +349,70 @@ public class QueryExecutor
             return new QueryResult { Success = false, ErrorMessage = $"Table '{command.TableName}' not found" };
         }
 
-        // Simple update implementation - update all rows
+        // Parse SET clause
+        var setPairs = command.SetClause!.Split(',');
+        var updates = new Dictionary<string, object?>();
+        
+        foreach (var pair in setPairs)
+        {
+            var parts = pair.Split('=');
+            if (parts.Length == 2)
+            {
+                var columnName = parts[0].Trim().Trim('`');
+                var value = parts[1].Trim().Trim('\'');
+                
+                // Handle different data types
+                if (value.ToLower() == "null")
+                {
+                    updates[columnName] = null;
+                }
+                else if (int.TryParse(value, out var intValue))
+                {
+                    updates[columnName] = intValue;
+                }
+                else if (double.TryParse(value, out var doubleValue))
+                {
+                    updates[columnName] = doubleValue;
+                }
+                else
+                {
+                    updates[columnName] = value;
+                }
+            }
+        }
+
+        // Apply WHERE clause if present
         var affectedRows = 0;
         foreach (var row in table.Rows)
         {
-            // Parse SET clause (simple implementation)
-            var setPairs = command.SetClause!.Split(',');
-            foreach (var pair in setPairs)
+            bool shouldUpdate = true;
+            
+            // Simple WHERE clause parsing (column = value)
+            if (!string.IsNullOrEmpty(command.WhereClause))
             {
-                var parts = pair.Split('=');
-                if (parts.Length == 2)
+                var whereMatch = System.Text.RegularExpressions.Regex.Match(
+                    command.WhereClause, 
+                    @"(\w+)\s*=\s*['""]?([^'""\s]+)['""]?", 
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                if (whereMatch.Success)
                 {
-                    var columnName = parts[0].Trim();
-                    var value = parts[1].Trim().Trim('\'');
+                    var whereColumn = whereMatch.Groups[1].Value;
+                    var whereValue = whereMatch.Groups[2].Value;
+                    var currentValue = row.GetValue(whereColumn)?.ToString();
                     
-                    row.SetValue(columnName, value);
+                    shouldUpdate = currentValue == whereValue;
                 }
             }
-            affectedRows++;
+            
+            if (shouldUpdate)
+            {
+                foreach (var update in updates)
+                {
+                    row.SetValue(update.Key, update.Value);
+                }
+                affectedRows++;
+            }
         }
 
         await _storageEngine.SaveDatabaseAsync(database);
@@ -357,9 +439,44 @@ public class QueryExecutor
             return new QueryResult { Success = false, ErrorMessage = $"Table '{command.TableName}' not found" };
         }
 
-        // Simple delete implementation - delete all rows
-        var affectedRows = table.Rows.Count;
-        // Note: This is a simplified implementation. In a real system, you'd need to implement proper row deletion
+        var rowsToDelete = new List<Row>();
+        var affectedRows = 0;
+
+        // Apply WHERE clause if present
+        foreach (var row in table.Rows)
+        {
+            bool shouldDelete = true;
+            
+            // Simple WHERE clause parsing (column = value)
+            if (!string.IsNullOrEmpty(command.WhereClause))
+            {
+                var whereMatch = System.Text.RegularExpressions.Regex.Match(
+                    command.WhereClause, 
+                    @"(\w+)\s*=\s*['""]?([^'""\s]+)['""]?", 
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                if (whereMatch.Success)
+                {
+                    var whereColumn = whereMatch.Groups[1].Value;
+                    var whereValue = whereMatch.Groups[2].Value;
+                    var currentValue = row.GetValue(whereColumn)?.ToString();
+                    
+                    shouldDelete = currentValue == whereValue;
+                }
+            }
+            
+            if (shouldDelete)
+            {
+                rowsToDelete.Add(row);
+                affectedRows++;
+            }
+        }
+
+        // Remove the rows
+        foreach (var row in rowsToDelete)
+        {
+            table.RemoveRow(row);
+        }
         
         await _storageEngine.SaveDatabaseAsync(database);
         

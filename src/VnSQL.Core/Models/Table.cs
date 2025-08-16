@@ -40,6 +40,19 @@ public class Table
         UpdatedAt = DateTime.UtcNow;
     }
     
+    public void RemoveRow(Row row)
+    {
+        // Convert to list, remove, then recreate queue
+        var rowsList = _rows.ToList();
+        rowsList.Remove(row);
+        _rows.Clear();
+        foreach (var r in rowsList)
+        {
+            _rows.Enqueue(r);
+        }
+        UpdatedAt = DateTime.UtcNow;
+    }
+    
     public Column? GetColumn(string columnName)
     {
         return _columns.FirstOrDefault(c => c.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase));

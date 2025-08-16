@@ -49,6 +49,14 @@ public class Program
                 
                 services.AddSingleton<IStorageEngine, MemoryStorageEngine>();
                 
+                services.AddSingleton<IStorageEngine, FastKvStorageEngine>(provider =>
+                {
+                    var logger = provider.GetRequiredService<ILogger<FastKvStorageEngine>>();
+                    var dataPath = configuration["VnSQL:Storage:FastKv:DataPath"] ?? "./fastkv-data";
+                    var shardCount = int.Parse(configuration["VnSQL:Storage:FastKv:ShardCount"] ?? "4");
+                    return new FastKvStorageEngine(logger, dataPath, shardCount);
+                });
+                
                 // Register MySQL configuration
                 services.Configure<MySQLConfiguration>(
                     configuration.GetSection("VnSQL:Protocols:MySQL"));
